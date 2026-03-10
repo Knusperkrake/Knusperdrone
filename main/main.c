@@ -23,11 +23,18 @@ void app_main(void)
     motor_pwm_init();
     motor_channel_init();
 
+    int16_t accel[3], gyro[3];
+
     while (1){
         set_motor_power(LEDC_CHANNEL_0, 128); // 50% duty cycle
         set_motor_power(LEDC_CHANNEL_1, 128); // 50% duty cycle
         set_motor_power(LEDC_CHANNEL_2, 128); // 50% duty cycle
         set_motor_power(LEDC_CHANNEL_3, 128); // 50% duty cycle
+
+        // read sensor and print for debugging
+        mpu6050_read(accel, gyro);
+        printf("accel: X=%d Y=%d Z=%d  ", accel[0], accel[1], accel[2]);
+        printf("gyro: X=%d Y=%d Z=%d\n", gyro[0], gyro[1], gyro[2]);
 
         vTaskDelay(1000 / portTICK_PERIOD_MS);
     }

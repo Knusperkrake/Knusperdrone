@@ -22,14 +22,42 @@ void i2c_master_init(void)
     i2c_driver_install(I2C_MASTER_NUM, conf.mode, 0, 0, 0);
 }
 
+// MPU6050 register addresses
+#define MPU6050_REG_PWR_MGMT_1    0x6B
+#define MPU6050_REG_ACCEL_XOUT_H  0x3B
+#define MPU6050_REG_GYRO_XOUT_H   0x43
+
 void mpu6050_init() {
-    uint8_t data[2] = {0x6b, 0x00};
+    uint8_t data[2] = {MPU6050_REG_PWR_MGMT_1, 0x00}; // wake up device
 
     i2c_master_write_to_device(
-        I2C_NUM_0,
+        I2C_MASTER_NUM,
         MPU6050_ADDR,
         data,
         2,
         100 / portTICK_PERIOD_MS
     );
+}
+
+// Read accelerometer and gyro registers. Each value is 16-bit big endian.
+void mpu6050_read(int16_t* accel, int16_t* gyro) {
+    // read 14 bytes starting from ACCEL_XOUT_H (accel 6, temp 2, gyro 6)
+    uint8_t buf[14];
+    i2c_master_write_read_device(
+        I2C_MASTER_NUM,
+        MPU6050_ADDR,
+        (uint8_t[]){MPU6050_REG_ACCEL_XOUT_H},
+        1,
+        buf,
+        sizeof(buf),
+        100 / portTICK_PERIOD_MS
+    );
+
+    // convert to signed 16-bit
+    for (int i = 0; i < 3; ++i) {
+        accel[i] = (int16_t)((buf[2*i] << 8) | buf[2*i + 1]);
+    }
+    for (int i = 0; i < 3; ++i) {
+        gyro[i] = (int16_t)((buf[8 + 2*i] << 8) | buf[8 + 2*i + 1]);
+    }
 }
