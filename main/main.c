@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include "esp_err.h" // for esp_err_t
 
 //freertos
 #include "freertos/FreeRTOS.h"
@@ -52,15 +53,23 @@ void app_main(void)
     printf("Versuche i2c master init\n");
     i2c_master_init();
     printf("Versuche mpu6050 init\n");
-    mpu6050_init();
+    if (mpu6050_init() != ESP_OK) {
+        printf("mpu6050_init failed\n");
+    }
 
     printf("Versuche motor pwm init\n");
-    motor_pwm_init();
+    if (motor_pwm_init() != ESP_OK) {
+        printf("motor_pwm_init failed\n");
+    }
     printf("Versuche motor channel init\n");
-    motor_channel_init();
+    if (motor_channel_init() != ESP_OK) {
+        printf("motor_channel_init failed\n");
+    }
 
     printf("Versuche wifi init\n");
-    wifi_init_ap();
+    if (wifi_init_ap() != ESP_OK) {
+        printf("wifi_init_ap failed\n");
+    }
     printf("Versuche websocket server start\n");
     websocket_server_start();
 

@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include "esp_err.h"
 
 /**
  * This bit-packed structure mirrors the 6‑byte control packet sent by the
@@ -24,7 +25,7 @@ typedef struct __attribute__((packed)) {
  */
 typedef void (*control_packet_callback_t)(CompactDronePacket pkt);
 
-void wifi_init_ap();
+esp_err_t wifi_init_ap(void);
 void websocket_server_start();
 
 /**
