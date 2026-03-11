@@ -6,10 +6,16 @@
 #include "esp_err.h"
 
 /**
- * This bit-packed structure mirrors the 6‑byte control packet sent by the
- * remote device.  All fields are 11‑bit unsigned values and the whole
- * structure is marked packed to prevent the compiler from inserting any
- * padding.  On the wire the packet is transmitted as 6 raw bytes.
+ * The on‑wire packet consists of six consecutive bytes produced by the
+ * C# sender using manual bit shifts.  Although the struct below is defined
+ * with packed bitfields, relying on memcpy to decode the frame can fail
+ * because bitfield ordering and endianness vary between compilers and
+ * architectures.  The implementation therefore performs an explicit
+ * unpacking using shifts (see wifi_ws.c) to guarantee agreement with the
+ * sender.
+ *
+ * All fields are 11‑bit unsigned values; the final 4 bits of the 48‑bit
+ * word are unused.
  */
 typedef struct __attribute__((packed)) {
     uint16_t throttle : 11; // 0 to 2047

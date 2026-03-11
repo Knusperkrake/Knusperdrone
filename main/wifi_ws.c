@@ -94,6 +94,36 @@ esp_err_t wifi_init_ap(void) {
     return ESP_OK;
 }
 
+
+/*
+ * Decode a six‑byte control packet that was bit-packed on the remote end
+ * using the same shifts used in C# code.  The original implementation just
+ * memcpy'd into a packed struct; bitfield ordering and endianness made that
+ * unreliable and produced mismatched values.  By manually assembling a
+ * 64‑bit word and then extracting the 11‑bit fields we guarantee the
+ * on‑the‑wire layout matches the sender's shifts.
+ */
+static CompactDronePacket handleWebSocketData(const uint8_t *data, size_t len)
+{
+    CompactDronePacket pkt = {0};
+    if (len < 6) {
+        return pkt;
+    }
+
+    /* Manual decoding to match the bit‑shifts used by the C# sender */
+    uint64_t packed = 0;
+    for (int i = 0; i < 6; i++) {
+        packed |= ((uint64_t)data[i] << (i * 8));
+    }
+
+    pkt.throttle = (packed >> 0)  & 0x7FF;
+    pkt.roll     = (packed >> 11) & 0x7FF;
+    pkt.pitch    = (packed >> 22) & 0x7FF;
+    pkt.yaw      = (packed >> 33) & 0x7FF;
+    /* unused bits are ignored */
+    return pkt;
+}
+
 static esp_err_t ws_handler(httpd_req_t *req)
 {
     if (req->method == HTTP_GET) {
@@ -129,11 +159,11 @@ static esp_err_t ws_handler(httpd_req_t *req)
     /* always null‑terminate so we can print as a string if needed */
     buf[frame.len] = 0;
 
-    if (frame.type == HTTPD_WS_TYPE_BINARY && frame.len == sizeof(CompactDronePacket)) {
-        CompactDronePacket pkt;
-        memcpy(&pkt, buf, sizeof(pkt));
+    if (frame.type == HTTPD_WS_TYPE_BINARY && frame.len >= 6) {
+        CompactDronePacket pkt = handleWebSocketData(buf, frame.len);
 
-        ESP_LOGI(TAG, "Control packet - thr=%u roll=%u pitch=%u yaw=%u", pkt.throttle, pkt.roll, pkt.pitch, pkt.yaw);
+        ESP_LOGI(TAG, "Control packet - thr=%u roll=%u pitch=%u yaw=%u",
+                 pkt.throttle, pkt.roll, pkt.pitch, pkt.yaw);
 
         if (g_control_cb) {
             g_control_cb(pkt);
@@ -147,6 +177,7 @@ static esp_err_t ws_handler(httpd_req_t *req)
     free(buf);
     return ESP_OK;
 }
+
 
 void websocket_server_start() {
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
