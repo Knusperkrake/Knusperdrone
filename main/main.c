@@ -17,19 +17,25 @@ void app_main(void)
 {
     printf("Funktioniert... vielleicht???\n");
     
+    printf("Versuche i2c master init\n");
     i2c_master_init();
+    printf("Versuche mpu6050 init\n");
     mpu6050_init();
 
+    printf("Versuche motor pwm init\n");
     motor_pwm_init();
+    printf("Versuche motor channel init\n");
     motor_channel_init();
 
     int16_t accel[3], gyro[3];
 
+    vTaskDelay(1000 / portTICK_PERIOD_MS); // wait for sensor to stabilize
+
     while (1){
-        set_motor_power(LEDC_CHANNEL_0, 128); // 50% duty cycle
-        set_motor_power(LEDC_CHANNEL_1, 128); // 50% duty cycle
-        set_motor_power(LEDC_CHANNEL_2, 128); // 50% duty cycle
-        set_motor_power(LEDC_CHANNEL_3, 128); // 50% duty cycle
+        set_motor_power(LEDC_CHANNEL_0, 256); // 100% duty cycle
+        set_motor_power(LEDC_CHANNEL_1, 256); // 100% duty cycle
+        set_motor_power(LEDC_CHANNEL_2, 256); // 100% duty cycle
+        set_motor_power(LEDC_CHANNEL_3, 256); // 100% duty cycle
 
         // read sensor and print for debugging
         mpu6050_read(accel, gyro);
