@@ -32,10 +32,10 @@ void app_main(void)
     vTaskDelay(1000 / portTICK_PERIOD_MS); // wait for sensor to stabilize
 
     while (1){
-        set_motor_power(LEDC_CHANNEL_0, 256); // 100% duty cycle
-        set_motor_power(LEDC_CHANNEL_1, 256); // 100% duty cycle
-        set_motor_power(LEDC_CHANNEL_2, 256); // 100% duty cycle
-        set_motor_power(LEDC_CHANNEL_3, 256); // 100% duty cycle
+        set_motor_power(LEDC_CHANNEL_0, 255); // 100% duty cycle
+        set_motor_power(LEDC_CHANNEL_1, 255); // 100% duty cycle
+        set_motor_power(LEDC_CHANNEL_2, 255); // 100% duty cycle
+        set_motor_power(LEDC_CHANNEL_3, 255); // 100% duty cycle
 
         // read sensor and print for debugging
         mpu6050_read(accel, gyro);
