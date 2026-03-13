@@ -12,7 +12,7 @@ static const char *TAG = "motor";
 
 esp_err_t motor_pwm_init() {
     ledc_timer_config_t timer = {
-        .speed_mode = LEDC_HIGH_SPEED_MODE,
+        .speed_mode = LEDC_LOW_SPEED_MODE,
         .timer_num = LEDC_TIMER_0,
         .duty_resolution = LEDC_TIMER_8_BIT,
         .freq_hz = 10000, // 10 kHz
@@ -31,7 +31,7 @@ esp_err_t motor_channel_init() {
     esp_err_t err;
 
     ledc_channel_config_t channel1 = {
-        .speed_mode = LEDC_HIGH_SPEED_MODE,
+        .speed_mode = LEDC_LOW_SPEED_MODE,
         .channel = LEDC_CHANNEL_0,
         .timer_sel = LEDC_TIMER_0,
         .intr_type = LEDC_INTR_DISABLE,
@@ -51,7 +51,7 @@ esp_err_t motor_channel_init() {
     }
 
     ledc_channel_config_t channel2 = {
-        .speed_mode = LEDC_HIGH_SPEED_MODE,
+        .speed_mode = LEDC_LOW_SPEED_MODE,
         .channel = LEDC_CHANNEL_1,
         .timer_sel = LEDC_TIMER_0,
         .intr_type = LEDC_INTR_DISABLE,
@@ -71,7 +71,7 @@ esp_err_t motor_channel_init() {
     }
 
     ledc_channel_config_t channel3 = {
-        .speed_mode = LEDC_HIGH_SPEED_MODE,
+        .speed_mode = LEDC_LOW_SPEED_MODE,
         .channel = LEDC_CHANNEL_2,
         .timer_sel = LEDC_TIMER_0,
         .intr_type = LEDC_INTR_DISABLE,
@@ -91,7 +91,7 @@ esp_err_t motor_channel_init() {
     }
 
     ledc_channel_config_t channel4 = {
-        .speed_mode = LEDC_HIGH_SPEED_MODE,
+        .speed_mode = LEDC_LOW_SPEED_MODE,
         .channel = LEDC_CHANNEL_3,
         .timer_sel = LEDC_TIMER_0,
         .intr_type = LEDC_INTR_DISABLE,
@@ -118,10 +118,10 @@ void set_motor_power(int channel, uint8_t duty) {
     if (duty > 0xff) {
         ESP_LOGW(TAG, "duty value %u out of range", duty);
     }
-    esp_err_t err = ledc_set_duty(LEDC_HIGH_SPEED_MODE, channel, duty);
+    esp_err_t err = ledc_set_duty(LEDC_LOW_SPEED_MODE, channel, duty);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "ledc_set_duty failed for ch %d: %s", channel, esp_err_to_name(err));
     } else {
-        ledc_update_duty(LEDC_HIGH_SPEED_MODE, channel);
+        ledc_update_duty(LEDC_LOW_SPEED_MODE, channel);
     }
 }

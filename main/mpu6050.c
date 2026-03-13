@@ -1,5 +1,7 @@
 #include "mpu6050.h"
 #include "driver/i2c.h"
+#include "esp_log.h"
+#include "esp_err.h"
 
 #define MPU6050_ADDR 0x68
 

@@ -9,6 +9,7 @@
 
 #include "nvs_utils.h"
 #include "esp_log.h"
+#include "esp_err.h"
 
 #include <string.h>
 #include <stdlib.h>
@@ -51,10 +52,17 @@ esp_err_t wifi_init_ap(void) {
         ESP_LOGE(TAG, "event loop create failed: %s", esp_err_to_name(err2));
         return err2;
     }
+    /*
     err2 = esp_netif_create_default_wifi_ap();
     if (err2 != ESP_OK) {
         ESP_LOGE(TAG, "netif create failed: %s", esp_err_to_name(err2));
         return err2;
+    }
+    */
+
+    if (esp_netif_create_default_wifi_ap() == NULL) {
+    ESP_LOGE(TAG, "Failed to create default WiFi AP netif");
+    return ESP_FAIL;
     }
 
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
@@ -181,7 +189,7 @@ static esp_err_t ws_handler(httpd_req_t *req)
 
 void websocket_server_start() {
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.ws_ping_pong_timeout_sec = 5;
+    //config.ws_ping_pong_timeout_sec = 5;
 
     httpd_handle_t server = NULL;
     if (httpd_start(&server, &config) == ESP_OK) {

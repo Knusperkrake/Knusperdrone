@@ -22,4 +22,6 @@ esp_err_t motor_channel_init(void);
  */
 void set_motor_power(int channel, uint8_t duty);
 
+void i2c_master_init(void);
+
 #endif

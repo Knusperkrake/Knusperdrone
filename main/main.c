@@ -46,6 +46,13 @@ static void control_packet_received(CompactDronePacket pkt)
            pkt.throttle, pkt.roll, pkt.pitch, pkt.yaw);
 }
 
+static inline float clamp100(float x)
+        {
+            if (x < 0.0f) return 0.0f;
+            if (x > 100.0f) return 100.0f;
+            return x;
+        }
+
 void app_main(void)
 {
     printf("Funktioniert... vielleicht???\n");
@@ -122,23 +129,27 @@ void app_main(void)
         float m3 = decoded_throttle + roll_term + pitch_term + yaw_term;
         float m4 = decoded_throttle - roll_term + pitch_term - yaw_term;
 
-        /* helper to confine to [0,100] */
+        
+        /* helper to confine to [0,100] ()<this war migrated to earlier in the code
         static inline float clamp100(float x)
         {
             if (x < 0.0f) return 0.0f;
             if (x > 100.0f) return 100.0f;
             return x;
         }
+        */
+     
+        
         m1 = clamp100(m1);
         m2 = clamp100(m2);
         m3 = clamp100(m3);
         m4 = clamp100(m4);
 
         /* convert each channel to duty and send to driver */
-        uint32_t d1 = (uint32_t)((m1 / 100.0f) * 256);
-        uint32_t d2 = (uint32_t)((m2 / 100.0f) * 256);
-        uint32_t d3 = (uint32_t)((m3 / 100.0f) * 256);
-        uint32_t d4 = (uint32_t)((m4 / 100.0f) * 256);
+        uint32_t d1 = (uint32_t)((m1 / 100.0f) * 255);
+        uint32_t d2 = (uint32_t)((m2 / 100.0f) * 255);
+        uint32_t d3 = (uint32_t)((m3 / 100.0f) * 255);
+        uint32_t d4 = (uint32_t)((m4 / 100.0f) * 255);
 
         set_motor_power(LEDC_CHANNEL_0, d1);
         set_motor_power(LEDC_CHANNEL_1, d2);
