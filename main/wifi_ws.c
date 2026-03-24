@@ -135,7 +135,7 @@ static CompactDronePacket handleWebSocketData(const uint8_t *data, size_t len)
 static esp_err_t ws_handler(httpd_req_t *req)
 {
     if (req->method == HTTP_GET) {
-        printf("\n\n===== WebSocket connected =====\n\n\n");
+        printf("\n\n WebSocket connected \n \n\n");
         return ESP_OK;
     }
 

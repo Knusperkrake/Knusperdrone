@@ -15,6 +15,7 @@
 #include "nvs_utils.h"
 #include "wifi_ws.h"
 
+
 /* simple PID controller used for roll/pitch/yaw rate control */
 typedef struct {
     float kp, ki, kd;
@@ -119,16 +120,21 @@ void app_main(void)
         float pitch_term = pid_update(&pitch_pid, pitch_error, dt);
         float yaw_term = pid_update(&yaw_pid, yaw_error, dt);
 
-        printf("pid outputs R=%.2f P=%.2f Y=%.2f  errors R=%.2f P=%.2f Y=%.2f\n",
+        /*printf("pid outputs R=%.2f P=%.2f Y=%.2f  errors R=%.2f P=%.2f Y=%.2f\n",
                roll_term, pitch_term, yaw_term,
-               roll_error, pitch_error, yaw_error);
+               roll_error, pitch_error, yaw_error);*/
 
         /* mix the four channels using the PID outputs */
+        /*
         float m1 = decoded_throttle + roll_term - pitch_term - yaw_term;
         float m2 = decoded_throttle - roll_term - pitch_term + yaw_term;
         float m3 = decoded_throttle + roll_term + pitch_term + yaw_term;
         float m4 = decoded_throttle - roll_term + pitch_term - yaw_term;
-
+        */
+        float m1 = decoded_throttle + decoded_roll - decoded_pitch - decoded_yaw;
+        float m2 = decoded_throttle - decoded_roll - decoded_pitch + decoded_yaw;
+        float m3 = decoded_throttle + decoded_roll + decoded_pitch + decoded_yaw;
+        float m4 = decoded_throttle - decoded_roll + decoded_pitch - decoded_yaw;
         
         /* helper to confine to [0,100] ()<this war migrated to earlier in the code
         static inline float clamp100(float x)
@@ -156,14 +162,17 @@ void app_main(void)
         set_motor_power(LEDC_CHANNEL_2, d3);
         set_motor_power(LEDC_CHANNEL_3, d4);
 
+        printf("duty: duty1=%ld duty2=%ld duty3=%ld duty4=%ld \n", d1, d2, d3, d4);
+
         // print sensor and command information (gyro already updated above)
+        /*
         printf("accel: X=%d Y=%d Z=%d  ", accel[0], accel[1], accel[2]);
         printf("gyro: X=%d Y=%d Z=%d\n", gyro[0], gyro[1], gyro[2]);
         printf("last cmd thr=%u roll=%u pitch=%u yaw=%u\n",
                current_cmd.throttle, current_cmd.roll,
                current_cmd.pitch, current_cmd.yaw);
         printf("decoded thr=%.1f roll=%.1f pitch=%.1f yaw=%.1f\n",
-               decoded_throttle, decoded_roll, decoded_pitch, decoded_yaw);
+               decoded_throttle, decoded_roll, decoded_pitch, decoded_yaw);*/
 
         vTaskDelay((int)(dt * 1000) / portTICK_PERIOD_MS);
     }

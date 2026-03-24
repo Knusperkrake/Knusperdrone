@@ -71,7 +71,7 @@ void mpu6050_read(int16_t* accel, int16_t* gyro) {
         100 / portTICK_PERIOD_MS
     );
     if (err != ESP_OK) {
-        ESP_LOGE("mpu6050", "read failed: %s", esp_err_to_name(err));
+        //ESP_LOGE("mpu6050", "read failed: %s", esp_err_to_name(err));
         return;
     }
 
