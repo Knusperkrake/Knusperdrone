@@ -16,12 +16,67 @@
 
 static const char *TAG = "wifi_ws";
 
-/* global callback pointer, guarded by the websocket task */
+/* global callback pointers, guarded by the websocket task */
 static control_packet_callback_t g_control_cb = NULL;
+static config_packet_callback_t g_config_cb = NULL;
+
+/* store the current websocket request handle for sending responses */
+static httpd_req_t *g_current_ws_req = NULL;
 
 void register_control_callback(control_packet_callback_t cb)
 {
     g_control_cb = cb;
+}
+
+void register_config_callback(config_packet_callback_t cb)
+{
+    g_config_cb = cb;
+}
+
+/*
+ * Get expected packet length for a given command
+ * Returns 0 if command is invalid
+ */
+static size_t get_expected_packet_length(uint8_t command)
+{
+    switch (command) {
+        case CMD_CONTROL:
+            return 6;  // Fixed 6 bytes for control packets
+        case CMD_READ_PID:
+            return 1;  // Just command byte
+        case CMD_WRITE_PID:
+            return 1 + 9 * sizeof(float);  // Command + 9 PID floats (P,I,D for roll/pitch/yaw)
+        case CMD_READ_BATTERY:
+            return 1;  // Just command byte
+        case CMD_READ_TRIM:
+            return 1;  // Just command byte
+        case CMD_WRITE_TRIM:
+            return 1 + 3 * sizeof(float);  // Command + 3 trim floats (roll/pitch/yaw)
+        case CMD_TARE_GYRO:
+            return 1;  // Just command byte
+        default:
+            return 0;  // Invalid command
+    }
+}
+
+esp_err_t websocket_send_response(const uint8_t *data, size_t len)
+{
+    if (!g_current_ws_req) {
+        ESP_LOGE(TAG, "No active websocket connection for response");
+        return ESP_FAIL;
+    }
+
+    httpd_ws_frame_t frame = {
+        .payload = (uint8_t*)data,
+        .len = len,
+        .type = HTTPD_WS_TYPE_BINARY
+    };
+
+    esp_err_t ret = httpd_ws_send_frame(g_current_ws_req, &frame);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to send websocket response: %s", esp_err_to_name(ret));
+    }
+    return ret;
 }
 
 esp_err_t wifi_init_ap(void) {
@@ -104,16 +159,14 @@ esp_err_t wifi_init_ap(void) {
 
 
 /*
- * Decode a six‑byte control packet that was bit-packed on the remote end
- * using the same shifts used in C# code.  The original implementation just
- * memcpy'd into a packed struct; bitfield ordering and endianness made that
- * unreliable and produced mismatched values.  By manually assembling a
- * 64‑bit word and then extracting the 11‑bit fields we guarantee the
- * on‑the‑wire layout matches the sender's shifts.
+ * Decode a six‑byte control packet (command 0) that was bit-packed on the remote end
+ * using the same shifts used in C# code. The first 4 bits are the command (0 for control).
+ * The implementation performs explicit unpacking using shifts to guarantee agreement
+ * with the sender.
  */
-static CompactDronePacket handleWebSocketData(const uint8_t *data, size_t len)
+static ControlPacket handleControlPacket(const uint8_t *data, size_t len)
 {
-    CompactDronePacket pkt = {0};
+    ControlPacket pkt = {0};
     if (len < 6) {
         return pkt;
     }
@@ -124,11 +177,11 @@ static CompactDronePacket handleWebSocketData(const uint8_t *data, size_t len)
         packed |= ((uint64_t)data[i] << (i * 8));
     }
 
-    pkt.throttle = (packed >> 0)  & 0x7FF;
-    pkt.roll     = (packed >> 11) & 0x7FF;
-    pkt.pitch    = (packed >> 22) & 0x7FF;
-    pkt.yaw      = (packed >> 33) & 0x7FF;
-    /* unused bits are ignored */
+    // Command is already checked to be 0
+    pkt.throttle = (packed >> 4)  & 0x7FF;
+    pkt.roll     = (packed >> 15) & 0x7FF;
+    pkt.pitch    = (packed >> 26) & 0x7FF;
+    pkt.yaw      = (packed >> 37) & 0x7FF;
     return pkt;
 }
 
@@ -136,8 +189,12 @@ static esp_err_t ws_handler(httpd_req_t *req)
 {
     if (req->method == HTTP_GET) {
         printf("\n\n WebSocket connected \n \n\n");
+        g_current_ws_req = req;  // store for sending responses
         return ESP_OK;
     }
+
+    // Update current request handle for responses
+    g_current_ws_req = req;
 
     httpd_ws_frame_t frame;
     memset(&frame, 0, sizeof(frame));
@@ -167,14 +224,28 @@ static esp_err_t ws_handler(httpd_req_t *req)
     /* always null‑terminate so we can print as a string if needed */
     buf[frame.len] = 0;
 
-    if (frame.type == HTTPD_WS_TYPE_BINARY && frame.len >= 6) {
-        CompactDronePacket pkt = handleWebSocketData(buf, frame.len);
+    if (frame.type == HTTPD_WS_TYPE_BINARY) {
+        uint8_t command = buf[0] & 0xF;  // First 4 bits
+        size_t expected_len = get_expected_packet_length(command);
 
-        ESP_LOGI(TAG, "Control packet - thr=%u roll=%u pitch=%u yaw=%u",
-                 pkt.throttle, pkt.roll, pkt.pitch, pkt.yaw);
-
-        if (g_control_cb) {
-            g_control_cb(pkt);
+        if (expected_len == 0) {
+            ESP_LOGW(TAG, "Unknown command %d in binary packet", command);
+        } else if (frame.len != expected_len) {
+            ESP_LOGW(TAG, "Invalid packet length for command %d: got %d, expected %d",
+                     command, frame.len, expected_len);
+        } else if (command == CMD_CONTROL) {
+            ControlPacket pkt = handleControlPacket(buf, frame.len);
+            ESP_LOGI(TAG, "Control packet - thr=%u roll=%u pitch=%u yaw=%u",
+                     pkt.throttle, pkt.roll, pkt.pitch, pkt.yaw);
+            if (g_control_cb) {
+                g_control_cb(pkt);
+            }
+        } else {
+            // Valid config command with correct length
+            ESP_LOGI(TAG, "Config packet cmd=%u len=%d", command, frame.len);
+            if (g_config_cb) {
+                g_config_cb(command, buf, frame.len, req);
+            }
         }
     } else if (frame.type == HTTPD_WS_TYPE_TEXT) {
         ESP_LOGI(TAG, "Received text: %s", buf);

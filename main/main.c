@@ -31,20 +31,88 @@ static float pid_update(PIDController *pid, float error, float dt)
     return pid->kp * error + pid->ki * pid->integ + pid->kd * deriv;
 }
 
+/* global PID instances for rate control - can be modified via websocket */
+static PIDController roll_pid  = { .kp = 0.5f, .ki = 0.1f, .kd = 0.01f };
+static PIDController pitch_pid = { .kp = 0.5f, .ki = 0.1f, .kd = 0.01f };
+static PIDController yaw_pid   = { .kp = 0.8f, .ki = 0.1f, .kd = 0.02f };
+
+/* global trim values for roll/pitch/yaw - can be modified via websocket */
+static float roll_trim  = 0.0f;
+static float pitch_trim = 0.0f;
+static float yaw_trim   = 0.0f;
+
 
 /* store the most recently received control values; updated from the
    websocket callback and read by the main loop */
-static CompactDronePacket current_cmd = {0};
+static ControlPacket current_cmd = {0};
 
-/* callback invoked by wifi_ws when a packet arrives */
-static void control_packet_received(CompactDronePacket pkt)
+/* callback invoked by wifi_ws when a config packet arrives */
+static void config_packet_received(uint8_t command, const uint8_t *data, size_t len, httpd_req_t *req)
 {
-    /* simply update the global and print; a real implementation would
-       convert these values to motor outputs or use them in the attitude
-       controller */
-    current_cmd = pkt;
-    printf("[cb] thr=%u roll=%u pitch=%u yaw=%u\n",
-           pkt.throttle, pkt.roll, pkt.pitch, pkt.yaw);
+    printf("[config] cmd=%u len=%zu\n", command, len);
+    switch (command) {
+        case CMD_READ_PID: // read all PID
+            {
+                // Send back 9 PID floats: roll P,I,D, pitch P,I,D, yaw P,I,D
+                float pid_data[9] = {
+                    roll_pid.kp, roll_pid.ki, roll_pid.kd,
+                    pitch_pid.kp, pitch_pid.ki, pitch_pid.kd,
+                    yaw_pid.kp, yaw_pid.ki, yaw_pid.kd
+                };
+                websocket_send_response((uint8_t*)pid_data, sizeof(pid_data));
+                printf("Sent PID values\n");
+            }
+            break;
+        case CMD_WRITE_PID: // write all PID
+            {
+                const float *pids = (const float*)(data + 1);
+                // Set PID values: pids[0-2] for roll, [3-5] for pitch, [6-8] for yaw
+                roll_pid.kp = pids[0];
+                roll_pid.ki = pids[1];
+                roll_pid.kd = pids[2];
+                pitch_pid.kp = pids[3];
+                pitch_pid.ki = pids[4];
+                pitch_pid.kd = pids[5];
+                yaw_pid.kp = pids[6];
+                yaw_pid.ki = pids[7];
+                yaw_pid.kd = pids[8];
+                printf("Updated PID: roll P=%.3f I=%.3f D=%.3f\n", pids[0], pids[1], pids[2]);
+            }
+            break;
+        case CMD_READ_BATTERY: // read battery
+            // TODO: read actual battery voltage/current
+            {
+                float battery_voltage = 3.7f;  // placeholder
+                websocket_send_response((uint8_t*)&battery_voltage, sizeof(battery_voltage));
+                printf("Sent battery voltage: %.2fV\n", battery_voltage);
+            }
+            break;
+        case CMD_READ_TRIM: // read trim
+            {
+                // Send back 3 trim floats: roll, pitch, yaw
+                float trim_data[3] = { roll_trim, pitch_trim, yaw_trim };
+                websocket_send_response((uint8_t*)trim_data, sizeof(trim_data));
+                printf("Sent trim values: roll=%.3f pitch=%.3f yaw=%.3f\n", roll_trim, pitch_trim, yaw_trim);
+            }
+            break;
+        case CMD_WRITE_TRIM: // write trim
+            {
+                const float *trims = (const float*)(data + 1);
+                // Set trim values for roll, pitch, yaw
+                roll_trim = trims[0];
+                pitch_trim = trims[1];
+                yaw_trim = trims[2];
+                printf("Updated trim: roll=%.3f pitch=%.3f yaw=%.3f\n", trims[0], trims[1], trims[2]);
+            }
+            break;
+        case CMD_TARE_GYRO: // tare gyro
+            // TODO: implement gyro taring/calibration
+            printf("Tare gyro request\n");
+            break;
+        default:
+            printf("Unknown config command %u\n", command);
+            break;
+    }
 }
 
 static inline float clamp100(float x)
@@ -82,15 +150,13 @@ void app_main(void)
     websocket_server_start();
 
     /* register the control packet handler so incoming binary frames are
-       decoded into compactDronePacket values */
+       decoded into ControlPacket values */
     register_control_callback(control_packet_received);
+    register_config_callback(config_packet_received);
 
     int16_t accel[3], gyro[3];
 
-    /* PID instances for rate control */
-    PIDController roll_pid  = { .kp = 0.5f, .ki = 0.1f, .kd = 0.01f };
-    PIDController pitch_pid = { .kp = 0.5f, .ki = 0.1f, .kd = 0.01f };
-    PIDController yaw_pid   = { .kp = 0.8f, .ki = 0.1f, .kd = 0.02f };
+    /* PID instances are now global and initialized above */
 
     vTaskDelay(1000 / portTICK_PERIOD_MS); // wait for sensor to stabilize
 
