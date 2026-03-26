@@ -23,6 +23,9 @@ static config_packet_callback_t g_config_cb = NULL;
 /* store the current websocket request handle for sending responses */
 static httpd_req_t *g_current_ws_req = NULL;
 
+/* flag to track if a client is connected */
+static bool client_connected = false;
+
 void register_control_callback(control_packet_callback_t cb)
 {
     g_control_cb = cb;
@@ -31,6 +34,11 @@ void register_control_callback(control_packet_callback_t cb)
 void register_config_callback(config_packet_callback_t cb)
 {
     g_config_cb = cb;
+}
+
+bool is_client_connected(void)
+{
+    return client_connected;
 }
 
 /*
@@ -188,22 +196,33 @@ static ControlPacket handleControlPacket(const uint8_t *data, size_t len)
 static esp_err_t ws_handler(httpd_req_t *req)
 {
     if (req->method == HTTP_GET) {
-        printf("\n\n WebSocket connected \n \n\n");
+        ESP_LOGI(TAG, "WebSocket handshake request (method=GET) from client");
         g_current_ws_req = req;  // store for sending responses
+        client_connected = true;
         return ESP_OK;
     }
 
-    // Update current request handle for responses
+    // If we ever see another method, still allow handling for frames.
+    ESP_LOGI(TAG, "ws_handler frame from method=%d", req->method);
     g_current_ws_req = req;
 
     httpd_ws_frame_t frame;
     memset(&frame, 0, sizeof(frame));
 
     /* First call just fetches the header (length and type). */
-    httpd_ws_recv_frame(req, &frame, 0);
+    esp_err_t hr = httpd_ws_recv_frame(req, &frame, 0);
+    if (hr != ESP_OK) {
+        ESP_LOGE(TAG, "httpd_ws_recv_frame(header) failed: %s", esp_err_to_name(hr));
+        return hr;
+    }
 
-    /* Guard against bogus lengths */
+    /* Guard against empty payloads (ping/pong) */
     if (frame.len == 0) {
+        ESP_LOGI(TAG, "WebSocket frame header len=0 type=%d; ignoring", frame.type);
+        if (frame.type == HTTPD_WS_TYPE_CLOSE) {
+            client_connected = false;
+            ESP_LOGI(TAG, "WebSocket closed by peer");
+        }
         return ESP_OK;
     }
 
@@ -223,6 +242,13 @@ static esp_err_t ws_handler(httpd_req_t *req)
 
     /* always null‑terminate so we can print as a string if needed */
     buf[frame.len] = 0;
+
+    if (frame.type == HTTPD_WS_TYPE_CLOSE) {
+        client_connected = false;
+        printf("\n\n WebSocket disconnected \n \n\n");
+        free(buf);
+        return ESP_OK;
+    }
 
     if (frame.type == HTTPD_WS_TYPE_BINARY) {
         uint8_t command = buf[0] & 0xF;  // First 4 bits

@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include "esp_err.h"
+#include "esp_http_server.h"
 
 typedef enum {
     CMD_CONTROL = 0,  // Standard control packet sent 50 times/second
@@ -62,5 +63,11 @@ void register_config_callback(config_packet_callback_t cb);
  * Returns ESP_OK on success
  */
 esp_err_t websocket_send_response(const uint8_t *data, size_t len);
+
+/**
+ * Check if a client is currently connected via WebSocket
+ * Returns true if connected, false otherwise
+ */
+bool is_client_connected(void);
 
 #endif

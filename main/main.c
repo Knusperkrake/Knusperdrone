@@ -46,6 +46,12 @@ static float yaw_trim   = 0.0f;
    websocket callback and read by the main loop */
 static ControlPacket current_cmd = {0};
 
+/* callback invoked by wifi_ws when a control packet arrives */
+static void control_packet_received(ControlPacket pkt)
+{
+    current_cmd = pkt;
+}
+
 /* callback invoked by wifi_ws when a config packet arrives */
 static void config_packet_received(uint8_t command, const uint8_t *data, size_t len, httpd_req_t *req)
 {
@@ -149,6 +155,12 @@ void app_main(void)
     printf("Versuche websocket server start\n");
     websocket_server_start();
 
+    /* Avoid static unused-variable warnings when the callbacks are only
+       referenced via function pointer registration (Werror builds). */
+    (void)roll_trim;
+    (void)pitch_trim;
+    (void)yaw_trim;
+
     /* register the control packet handler so incoming binary frames are
        decoded into ControlPacket values */
     register_control_callback(control_packet_received);
@@ -163,6 +175,11 @@ void app_main(void)
     /* run at 100Hz (10ms period) for PID */
     const float dt = 0.01f;
     while (1){
+        /* If no client is connected, zero out the commands to ensure motors stay off */
+        if (!is_client_connected()) {
+            current_cmd = (ControlPacket){0};
+        }
+
         /* decode the four 11‑bit command fields into convenient floating
            ranges.  roll/pitch/yaw map 0..2047 to -100..+100 (10.235 ≈ 2047/200)
            while throttle goes to a 0‑100% span for the motor driver. */
@@ -186,21 +203,28 @@ void app_main(void)
         float pitch_term = pid_update(&pitch_pid, pitch_error, dt);
         float yaw_term = pid_update(&yaw_pid, yaw_error, dt);
 
+        /* Suppress unused variable warnings for PID terms (not yet integrated into motor mix) */
+        (void)roll_term;
+        (void)pitch_term;
+        (void)yaw_term;
+
         /*printf("pid outputs R=%.2f P=%.2f Y=%.2f  errors R=%.2f P=%.2f Y=%.2f\n",
                roll_term, pitch_term, yaw_term,
                roll_error, pitch_error, yaw_error);*/
 
-        /* mix the four channels using the PID outputs */
-        /*
-        float m1 = decoded_throttle + roll_term - pitch_term - yaw_term;
-        float m2 = decoded_throttle - roll_term - pitch_term + yaw_term;
-        float m3 = decoded_throttle + roll_term + pitch_term + yaw_term;
-        float m4 = decoded_throttle - roll_term + pitch_term - yaw_term;
-        */
+        
         float m1 = decoded_throttle + decoded_roll - decoded_pitch - decoded_yaw;
         float m2 = decoded_throttle - decoded_roll - decoded_pitch + decoded_yaw;
         float m3 = decoded_throttle + decoded_roll + decoded_pitch + decoded_yaw;
         float m4 = decoded_throttle - decoded_roll + decoded_pitch - decoded_yaw;
+
+        /* mix the four channels using the PID outputs + feedforward from decoded stick commands */
+        /* unused for now, since the PID is not yet tuned and the drone would be unstable with it - just send stick commands directly to motors
+        float m1 = decoded_throttle + decoded_roll + roll_term - decoded_pitch - pitch_term - decoded_yaw - yaw_term;
+        float m2 = decoded_throttle - decoded_roll - roll_term - decoded_pitch - pitch_term + decoded_yaw + yaw_term;
+        float m3 = decoded_throttle + decoded_roll + roll_term + decoded_pitch + pitch_term + decoded_yaw + yaw_term;
+        float m4 = decoded_throttle - decoded_roll - roll_term + decoded_pitch + pitch_term - decoded_yaw - yaw_term;
+        */
         
         /* helper to confine to [0,100] ()<this war migrated to earlier in the code
         static inline float clamp100(float x)
@@ -223,12 +247,21 @@ void app_main(void)
         uint32_t d3 = (uint32_t)((m3 / 100.0f) * 255);
         uint32_t d4 = (uint32_t)((m4 / 100.0f) * 255);
 
-        set_motor_power(LEDC_CHANNEL_0, d1);
-        set_motor_power(LEDC_CHANNEL_1, d2);
-        set_motor_power(LEDC_CHANNEL_2, d3);
-        set_motor_power(LEDC_CHANNEL_3, d4);
+        // only set motor power if a client is connected. WILL STOP MIDAIR IF CLIENT DISCONNECTS
+        if (is_client_connected)
+        {
+            set_motor_power(LEDC_CHANNEL_0, d1);
+            set_motor_power(LEDC_CHANNEL_1, d2);
+            set_motor_power(LEDC_CHANNEL_2, d3);
+            set_motor_power(LEDC_CHANNEL_3, d4);
+        } else {
+            set_motor_power(LEDC_CHANNEL_0, 0);
+            set_motor_power(LEDC_CHANNEL_1, 0);
+            set_motor_power(LEDC_CHANNEL_2, 0);
+            set_motor_power(LEDC_CHANNEL_3, 0);
+        }
 
-        printf("duty: duty1=%ld duty2=%ld duty3=%ld duty4=%ld \n", d1, d2, d3, d4);
+        //printf("duty: duty1=%ld duty2=%ld duty3=%ld duty4=%ld \n", d1, d2, d3, d4);
 
         // print sensor and command information (gyro already updated above)
         /*
