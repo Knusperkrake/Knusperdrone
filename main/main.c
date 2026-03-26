@@ -248,7 +248,8 @@ void app_main(void)
         uint32_t d4 = (uint32_t)((m4 / 100.0f) * 255);
 
         // only set motor power if a client is connected. WILL STOP MIDAIR IF CLIENT DISCONNECTS
-        if (is_client_connected)
+        
+        if (is_client_connected())
         {
             set_motor_power(LEDC_CHANNEL_0, d1);
             set_motor_power(LEDC_CHANNEL_1, d2);
@@ -260,7 +261,7 @@ void app_main(void)
             set_motor_power(LEDC_CHANNEL_2, 0);
             set_motor_power(LEDC_CHANNEL_3, 0);
         }
-
+        
         //printf("duty: duty1=%ld duty2=%ld duty3=%ld duty4=%ld \n", d1, d2, d3, d4);
 
         // print sensor and command information (gyro already updated above)
