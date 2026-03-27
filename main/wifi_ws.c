@@ -59,7 +59,7 @@ static size_t get_expected_packet_length(uint8_t command)
         case CMD_READ_TRIM:
             return 1;  // Just command byte
         case CMD_WRITE_TRIM:
-            return 1 + 3 * sizeof(float);  // Command + 3 trim floats (roll/pitch/yaw)
+            return 1 + 4 * sizeof(int);  // Command + 4 trim int (FL, FR, BL, BR)
         case CMD_TARE_GYRO:
             return 1;  // Just command byte
         default:

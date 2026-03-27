@@ -37,9 +37,10 @@ static PIDController pitch_pid = { .kp = 0.5f, .ki = 0.1f, .kd = 0.01f };
 static PIDController yaw_pid   = { .kp = 0.8f, .ki = 0.1f, .kd = 0.02f };
 
 /* global trim values for roll/pitch/yaw - can be modified via websocket */
-static float roll_trim  = 0.0f;
-static float pitch_trim = 0.0f;
-static float yaw_trim   = 0.0f;
+static int FL_trim  = 0;
+static int FR_trim = 0;
+static int BL_trim   = 0;
+static int BR_trim      = 0;
 
 
 /* store the most recently received control values; updated from the
@@ -95,20 +96,22 @@ static void config_packet_received(uint8_t command, const uint8_t *data, size_t 
             break;
         case CMD_READ_TRIM: // read trim
             {
-                // Send back 3 trim floats: roll, pitch, yaw
-                float trim_data[3] = { roll_trim, pitch_trim, yaw_trim };
+                // Send back 4 trim floats: FL, FR; BL, BR
+                int trim_data[4] = { FL_trim, FR_trim, BL_trim, BR_trim };
                 websocket_send_response((uint8_t*)trim_data, sizeof(trim_data));
-                printf("Sent trim values: roll=%.3f pitch=%.3f yaw=%.3f\n", roll_trim, pitch_trim, yaw_trim);
+                printf("Sent trim values: FL_trim=%d FR_trim=%d BL_trim=%d BR_trim=%d \n", FL_trim, FR_trim, BL_trim, BR_trim);
             }
             break;
         case CMD_WRITE_TRIM: // write trim
             {
-                const float *trims = (const float*)(data + 1);
-                // Set trim values for roll, pitch, yaw
-                roll_trim = trims[0];
-                pitch_trim = trims[1];
-                yaw_trim = trims[2];
-                printf("Updated trim: roll=%.3f pitch=%.3f yaw=%.3f\n", trims[0], trims[1], trims[2]);
+                const int *trims = (const int*)(data + 1);
+                // Set trim values for FL, FR, BL, BR trims
+                FL_trim = trims[0];
+                FR_trim = trims[1];
+                BL_trim = trims[2];
+                BR_trim = trims[3];
+
+                printf("Updated trim: FL_trim=%d FR_trim=%d BL_trim=%d BR_trim=%d \n", trims[0], trims[1], trims[2], trims[3]);
             }
             break;
         case CMD_TARE_GYRO: // tare gyro
@@ -157,9 +160,10 @@ void app_main(void)
 
     /* Avoid static unused-variable warnings when the callbacks are only
        referenced via function pointer registration (Werror builds). */
-    (void)roll_trim;
-    (void)pitch_trim;
-    (void)yaw_trim;
+    (void)FL_trim;
+    (void)FR_trim;
+    (void)BL_trim;
+    (void)BR_trim;
 
     /* register the control packet handler so incoming binary frames are
        decoded into ControlPacket values */
@@ -189,10 +193,13 @@ void app_main(void)
         float decoded_throttle = ((float)current_cmd.throttle / 20.47f); // 0..100
 
         /* read gyro rates immediately so PID uses newest data */
-        mpu6050_read(accel, gyro);
-        float measured_roll_rate = (float)gyro[0];
-        float measured_pitch_rate = (float)gyro[1];
-        float measured_yaw_rate = (float)gyro[2];
+        //mpu6050_read(accel, gyro);
+        //float measured_roll_rate = (float)gyro[0];
+        //float measured_pitch_rate = (float)gyro[1];
+        //float measured_yaw_rate = (float)gyro[2];
+        float measured_roll_rate = 0.0f;
+        float measured_pitch_rate = 0.0f;
+        float measured_yaw_rate = 0.0f;
 
         /* compute errors and run PID controllers (rate loop) */
         float roll_error = decoded_roll - measured_roll_rate;
@@ -213,10 +220,10 @@ void app_main(void)
                roll_error, pitch_error, yaw_error);*/
 
         
-        float m1 = decoded_throttle + decoded_roll - decoded_pitch - decoded_yaw;
-        float m2 = decoded_throttle - decoded_roll - decoded_pitch + decoded_yaw;
-        float m3 = decoded_throttle + decoded_roll + decoded_pitch + decoded_yaw;
-        float m4 = decoded_throttle - decoded_roll + decoded_pitch - decoded_yaw;
+        float m1 = decoded_throttle + decoded_roll - decoded_pitch - decoded_yaw + FL_trim;
+        float m2 = decoded_throttle - decoded_roll - decoded_pitch + decoded_yaw + FR_trim;
+        float m3 = decoded_throttle + decoded_roll + decoded_pitch + decoded_yaw + BL_trim;
+        float m4 = decoded_throttle - decoded_roll + decoded_pitch - decoded_yaw + BR_trim;
 
         /* mix the four channels using the PID outputs + feedforward from decoded stick commands */
         /* unused for now, since the PID is not yet tuned and the drone would be unstable with it - just send stick commands directly to motors
